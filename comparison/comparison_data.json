@@ -1,0 +1,129 @@
+{
+  "rtlflow": {
+    "tool": "RTLflow",
+    "venue": "ICPP 2022",
+    "hardware": "NVIDIA A6000 GPU",
+    "approach": "Transpiles RTL to CUDA kernels; batch-stimulus parallelism",
+    "designs": [
+      "NVDLA",
+      "Spinal",
+      "riscv-mini"
+    ],
+    "baseline": "Verilator (80-thread CPU)",
+    "results": {
+      "NVDLA": {
+        "speedup_vs_verilator_mt": 40.7,
+        "speedup_vs_verilator_st": 523.0,
+        "note": "65536 stimuli, 10K cycles, vs 80-thread Verilator"
+      },
+      "Spinal": {
+        "speedup_vs_verilator_mt": 46.7,
+        "speedup_vs_verilator_st": null,
+        "note": "65536 stimuli, 500K cycles, vs 80-thread Verilator"
+      },
+      "riscv-mini": {
+        "speedup_vs_verilator_mt": null,
+        "speedup_vs_verilator_st": null,
+        "note": "Evaluated in paper; exact peak not reported in abstract"
+      }
+    },
+    "key_metrics": {
+      "peak_speedup_vs_mt_verilator": 46.7,
+      "peak_speedup_vs_st_verilator": 523.0,
+      "requires_batch_stimuli": true,
+      "min_stimuli_for_speedup": "~1000+"
+    }
+  },
+  "gem": {
+    "tool": "GEM",
+    "venue": "DAC 2025",
+    "hardware": "NVIDIA A100 GPU",
+    "approach": "Emulator-inspired virtual VLIW architecture mapped to CUDA",
+    "designs": [
+      "NVDLA",
+      "RocketChip",
+      "Gemmini",
+      "OpenPiton-derived multi-core"
+    ],
+    "baseline": "Verilator (1-thread & 8-thread), commercial tool",
+    "results": {
+      "average": {
+        "speedup_vs_verilator_st": 24.87,
+        "speedup_vs_verilator_8t": 5.98,
+        "speedup_vs_commercial": 9.15
+      },
+      "NVDLA (peak)": {
+        "speedup_vs_verilator_st": 64.76,
+        "speedup_vs_commercial": 38.85
+      }
+    },
+    "key_metrics": {
+      "avg_speedup_vs_st_verilator": 24.87,
+      "avg_speedup_vs_8t_verilator": 5.98,
+      "avg_speedup_vs_commercial": 9.15,
+      "peak_speedup_vs_st_verilator": 64.76,
+      "requires_batch_stimuli": false
+    }
+  },
+  "parendi": {
+    "tool": "Parendi",
+    "venue": "ASPLOS 2025",
+    "hardware": "Graphcore IPU-POD4 (up to 5888 cores, 4 IPU sockets)",
+    "approach": "Distributes RTL across IPU tiles with fiber-based parallelism",
+    "designs": [
+      "vta",
+      "mc",
+      "sr2-sr15",
+      "lr2-lr10",
+      "pico",
+      "bitcoin",
+      "rocket"
+    ],
+    "baseline": "Verilator on Intel Xeon 6348 (ix3) & AMD EPYC 9554 (ae4)",
+    "results": {
+      "geomean": {
+        "speedup_vs_ix3": 2.81,
+        "speedup_vs_ae4": 2.75
+      },
+      "vta": {
+        "parendi_khz": 454.1,
+        "verilator_ix3_khz": 113.75,
+        "verilator_ae4_khz": 164.73,
+        "tiles": 1472
+      },
+      "mc": {
+        "parendi_khz": 592.83,
+        "verilator_ix3_khz": 88.96,
+        "verilator_ae4_khz": 143.88,
+        "tiles": 1472
+      },
+      "sr15": {
+        "parendi_khz": 31.69,
+        "verilator_ix3_khz": 9.22,
+        "verilator_ae4_khz": 6.51,
+        "tiles": 5888,
+        "speedup_vs_ix3": 4.09
+      },
+      "lr10": {
+        "parendi_khz": 38.24,
+        "verilator_ix3_khz": 9.27,
+        "verilator_ae4_khz": 6.27,
+        "tiles": 5888,
+        "speedup_vs_ix3": 4.13,
+        "speedup_vs_ae4": 5.02
+      }
+    },
+    "key_metrics": {
+      "geomean_speedup_vs_ix3": 2.81,
+      "geomean_speedup_vs_ae4": 2.75,
+      "peak_speedup_vs_ae4": 5.02,
+      "requires_batch_stimuli": false
+    },
+    "cost_analysis": {
+      "lr10_1B_cycles_ipu_hours": 7.26,
+      "lr10_1B_cycles_ipu_cost_usd": 17,
+      "lr10_1B_cycles_ae4_hours": 44.3,
+      "lr10_1B_cycles_ae4_cost_usd": 69
+    }
+  }
+}

@@ -281,6 +281,15 @@ private:
     bool m_xInitialEdge = false;    // main switch: --x-initial-edge
     bool m_xmlOnly = false;         // main switch: --xml-only
 
+    // WSE backend options
+    bool        m_wse = false;          // main switch: --wse
+    bool        m_wseReport = true;     // main switch: --wse-report
+    uint32_t    m_wsePes = 0;           // main switch: --wse-pes
+    uint32_t    m_wseNpipe = 0;         // main switch: --wse-npipe
+    uint32_t    m_wseWidth = 0;         // main switch: --wse-width
+    uint32_t    m_wseHeight = 0;        // main switch: --wse-height
+    string      m_wseArch = "wse3";     // main switch: --wse-arch
+
     int         m_buildJobs = 1;    // main switch: -j
     int         m_convergeLimit = 100;  // main switch: --converge-limit
     int         m_coverageMaxWidth = 256; // main switch: --coverage-max-width
@@ -477,6 +486,15 @@ public:
     bool vpi() const { return m_vpi; }
     bool xInitialEdge() const { return m_xInitialEdge; }
     bool xmlOnly() const { return m_xmlOnly; }
+
+    // WSE backend accessors
+    bool wse() const { return m_wse; }
+    bool wseReport() const { return m_wseReport; }
+    uint32_t wsePes() const { return m_wsePes; }
+    uint32_t wseNpipe() const { return m_wseNpipe; }
+    uint32_t wseWidth() const { return m_wseWidth; }
+    uint32_t wseHeight() const { return m_wseHeight; }
+    string wseArch() const { return m_wseArch; }
 
     int buildJobs() const { return m_buildJobs; }
     int convergeLimit() const { return m_convergeLimit; }

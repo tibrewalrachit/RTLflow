@@ -256,6 +256,12 @@ RAW_OBJS = \
 	V3Waiver.o \
 	V3Width.o \
 	V3WidthSel.o \
+	V3WseAnalyze.o \
+	V3WseColorAlloc.o \
+	V3WseEmitCsl.o \
+	V3WseEmitHost.o \
+	V3WsePartition.o \
+	V3WseSpsSchedule.o \
 
 # Non-concatable
 NC_OBJS += \

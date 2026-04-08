@@ -98,6 +98,12 @@
 #include "V3Unroll.h"
 #include "V3Waiver.h"
 #include "V3Width.h"
+#include "V3WseAnalyze.h"
+#include "V3WseColorAlloc.h"
+#include "V3WseEmitCsl.h"
+#include "V3WseEmitHost.h"
+#include "V3WsePartition.h"
+#include "V3WseSpsSchedule.h"
 
 #include <ctime>
 
@@ -512,6 +518,16 @@ static void process() {
     }
     if (!v3Global.opt.xmlOnly()
         && !v3Global.opt.dpiHdrOnly()) {  // Unfortunately we have some lint checks in emitc.
+        // === WAVETOP WSE BACKEND — insert before standard C++ emit ===
+        if (v3Global.opt.wse()) {
+            WseDesignStats stats  = V3WseAnalyze::analyze(v3Global.rootp());
+            WsePeMap       peMap  = V3WsePartition::partition(v3Global.rootp(), stats);
+            WseColorMap    colors = V3WseColorAlloc::allocate(peMap);
+            WseSpsConfig   sps    = V3WseSpsSchedule::schedule(peMap, colors, stats);
+            V3WseEmitCsl::emit(v3Global.rootp(), peMap, colors, sps);
+            V3WseEmitHost::emit(peMap, sps);
+            return;  // skip standard C++ emit
+        }
         V3EmitC::emitc();
     }
     if (v3Global.opt.xmlOnly()

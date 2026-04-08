@@ -1416,6 +1416,34 @@ void V3Options::parseOptsList(FileLine* fl, const string& optdir, int argc, char
     DECL_OPTION("-Wwarn-style", CbCall, []() { FileLine::globalWarnStyleOff(false); });
     DECL_OPTION("-waiver-output", Set, &m_waiverOutput);
 
+    // WSE backend options
+    DECL_OPTION("-wse", CbCall, [this]() {
+        m_outFormatOk = true;
+        m_wse = true;
+    });
+    DECL_OPTION("-wse-arch", CbVal, [this, fl](const char* valp) {
+        if (!strcmp(valp, "wse2") || !strcmp(valp, "wse3")) {
+            m_wseArch = valp;
+        } else {
+            fl->v3fatal("Unknown setting for --wse-arch: '"
+                        << valp << "'\n"
+                        << fl->warnMore() << "... Suggest 'wse2' or 'wse3'");
+        }
+    });
+    DECL_OPTION("-wse-height", CbVal, [this](const char* valp) {
+        m_wseHeight = std::atoi(valp);
+    });
+    DECL_OPTION("-wse-npipe", CbVal, [this](const char* valp) {
+        m_wseNpipe = std::atoi(valp);
+    });
+    DECL_OPTION("-wse-pes", CbVal, [this](const char* valp) {
+        m_wsePes = std::atoi(valp);
+    });
+    DECL_OPTION("-wse-report", OnOff, &m_wseReport);
+    DECL_OPTION("-wse-width", CbVal, [this](const char* valp) {
+        m_wseWidth = std::atoi(valp);
+    });
+
     DECL_OPTION("-x-assign", CbVal, [this, fl](const char* valp) {
         if (!strcmp(valp, "0")) {
             m_xAssign = "0";

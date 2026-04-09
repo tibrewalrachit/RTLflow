@@ -114,6 +114,32 @@ AC_ARG_ENABLE([longtests],
 AC_SUBST(CFG_WITH_LONGTESTS)
 AC_MSG_RESULT($CFG_WITH_LONGTESTS)
 
+# RTLflow: CUDA architecture target(s)
+AC_MSG_CHECKING(CUDA architecture target)
+AC_ARG_WITH([cuda-arch],
+            [AS_HELP_STRING([--with-cuda-arch=ARCH],
+                            [CUDA architecture target(s), comma-separated.
+                             e.g. sm_80, sm_90, sm_100, sm_120
+                             @<:@default=sm_80@:>@])],
+            [CUDA_ARCH="${withval}"],
+            [CUDA_ARCH="sm_80"])
+AC_SUBST(CUDA_ARCH)
+AC_MSG_RESULT($CUDA_ARCH)
+
+# RTLflow: MPI multi-node support
+AC_MSG_CHECKING(whether to enable MPI multi-node support)
+AC_ARG_ENABLE([mpi],
+              [AS_HELP_STRING([--enable-mpi],
+                              [Enable MPI for multi-node RTLflow simulation])],
+              [case "${enableval}" in
+                yes) ENABLE_MPI=yes ;;
+                no)  ENABLE_MPI=no ;;
+                *)   AC_MSG_ERROR([bad value '${enableval}' for --enable-mpi]) ;;
+               esac],
+              [ENABLE_MPI=no])
+AC_SUBST(ENABLE_MPI)
+AC_MSG_RESULT($ENABLE_MPI)
+
 # Compiler flags (ensure they are not empty to avoid configure defaults)
 CFLAGS+=" "
 CPPFLAGS+=" "

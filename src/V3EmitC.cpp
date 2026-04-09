@@ -5249,7 +5249,6 @@ void V3EmitC::emitRTLflowInt(size_t cuda_cmem_size, size_t cuda_smem_size, size_
     string topClassName = v3Global.opt.prefix();
     string filename = fileDir + "rtlflow.h";
 
-    // newCFile(fileDir + "taskgraph.h", false , false);
     AstCFile* cfilep = new AstCFile(v3Global.rootp()->fileline(), filename);
     cfilep->slow(false);
     cfilep->source(false);
@@ -5259,39 +5258,43 @@ void V3EmitC::emitRTLflowInt(size_t cuda_cmem_size, size_t cuda_smem_size, size_
 
     V3OutCFile of(filename);
     of.putsGuard();
+    of.puts("\n#include <vector>\n");
     of.puts("\n#include <taskflow.hpp>\n");
     of.puts("\n#include <rf_heavy.h>\n");
+    of.puts("\n#include <rf_multigpu.h>\n");
     of.puts("\n#include <cuda/cudaflow.hpp>\n");
+    of.puts("\n#include <cuda/cuda_device.hpp>\n");
 
     of.puts("// begin of namespace RF =====================================\n");
     of.puts("namespace RF {\n");
-    // of.puts("#include \""+ topClassName + ".h\"\n");
     of.puts("class " + topClassName + "__Syms;\n");
     of.puts("class " + topClassName + ";\n");
     of.puts("class RTLflow {\n\n");
     of.puts("friend class " + topClassName + ";\n");
     of.putsPrivate(true);
     of.puts("tf::Taskflow _taskflow;\n");
-    of.puts("tf::cudaFlow _cudaflow;\n");
-    of.puts("tf::Executor _executor{8};\n");
+    of.puts("tf::Executor _executor;\n");
     of.puts("size_t cuda_cmem_size{" + cvtToStr(cuda_cmem_size) + "};\n");
     of.puts("size_t cuda_smem_size{" + cvtToStr(cuda_smem_size) + "};\n");
     of.puts("size_t cuda_imem_size{" + cvtToStr(cuda_imem_size) + "};\n");
     of.puts("size_t cuda_qmem_size{" + cvtToStr(cuda_qmem_size) + "};\n");
     of.puts("size_t gpu_threads;\n");
+    of.puts("size_t num_gpus;\n");
     of.puts("size_t ast_size{" + cvtToStr(counter.total_count) + "};\n");
     of.puts("int loop{0};\n");
     of.puts("bool init{false};\n");
+    of.puts("std::vector<DeviceState> _devices;\n");
 
     of.putsPrivate(false);
+    // Backward-compatible aliases (point to device 0)
+    of.puts("// Backward-compatible signal pointers (alias to device 0)\n");
     of.puts("CData* _csignals{nullptr};\n");
     of.puts("SData* _ssignals{nullptr};\n");
     of.puts("IData* _isignals{nullptr};\n");
     of.puts("QData* _qsignals{nullptr};\n");
     of.puts("IData* change{nullptr};\n");
     of.puts("bool*  done{nullptr};\n");
-    // of.puts("IData* done{nullptr};\n");
-    of.puts("RTLflow(size_t gpu_threads = 1);\n");
+    of.puts("RTLflow(size_t gpu_threads = 1, size_t num_gpus = 0);\n");
     of.puts("~RTLflow();\n");
     of.puts("void initialize(" + topClassName + "__Syms*);\n");
     of.puts("void run();\n");
@@ -5299,6 +5302,10 @@ void V3EmitC::emitRTLflowInt(size_t cuda_cmem_size, size_t cuda_smem_size, size_
     of.puts("SData* get(SDataLoc sdl, size_t idx);\n");
     of.puts("QData* get(QDataLoc qdl, size_t idx);\n");
     of.puts("IData* get(IDataLoc idl, size_t idx);\n");
+    of.puts("// Multi-GPU accessors\n");
+    of.puts("DeviceState& device(size_t d) { return _devices[d]; }\n");
+    of.puts("const DeviceState& device(size_t d) const { return _devices[d]; }\n");
+    of.puts("size_t device_count() const { return num_gpus; }\n");
     of.puts("};\n\n");
 
     of.puts("} // end of namespace RF ==================================== \n");
@@ -5309,15 +5316,16 @@ void V3EmitC::emitRTLflowImp() {
     string topClassName = v3Global.opt.prefix();
     string filename = fileDir + "rtlflow.cu";
 
-    // newCFile(fileDir + "taskgraph.h", false , false);
     AstCFile* cfilep = new AstCFile(v3Global.rootp()->fileline(), filename);
     cfilep->slow(false);
     cfilep->source(true);
     v3Global.rootp()->addFilesp(cfilep);
 
     V3OutCFile of(filename);
+    of.puts("\n#include <algorithm>\n");
     of.puts("\n#include <taskflow.hpp>\n");
     of.puts("\n#include <cuda/algorithm/reduce.hpp>\n");
+    of.puts("\n#include <cuda/cuda_device.hpp>\n");
     of.puts("\n#include \"rtlflow.h\"\n\n");
     of.puts("\n#include \"" + topClassName + ".h\"\n\n");
     of.puts("#include <assert.h>\n\n");
@@ -5335,81 +5343,139 @@ void V3EmitC::emitRTLflowImp() {
             + "__Syms* __restrict vlSymsp, CData* _csignals, SData* _ssignals, IData* _isignals, "
               "QData* _qsignals);\n\n");
 
-    of.puts("// idx: index of testbenches\n");
+    // ========== get() methods with multi-GPU device routing ==========
+    of.puts("// idx: global index of testbenches (routes to correct device)\n");
     of.puts("CData* RTLflow::get(CDataLoc cdl, size_t idx) {\n");
-    of.puts("return _csignals + idx * cdl.size + cdl.memloc;\n");
+    of.puts("if (num_gpus == 1) { return _csignals + idx * cdl.size + cdl.memloc; }\n");
+    of.puts("size_t d = find_device(_devices, idx);\n");
+    of.puts("auto& dev = _devices[d];\n");
+    of.puts("size_t local_idx = idx - dev.global_offset;\n");
+    of.puts("return dev._csignals + local_idx * cdl.size + cdl.memloc;\n");
     of.puts("}\n");
     of.puts("SData* RTLflow::get(SDataLoc sdl, size_t idx) {\n");
-    of.puts("return _ssignals + idx * sdl.size + sdl.memloc;\n");
+    of.puts("if (num_gpus == 1) { return _ssignals + idx * sdl.size + sdl.memloc; }\n");
+    of.puts("size_t d = find_device(_devices, idx);\n");
+    of.puts("auto& dev = _devices[d];\n");
+    of.puts("size_t local_idx = idx - dev.global_offset;\n");
+    of.puts("return dev._ssignals + local_idx * sdl.size + sdl.memloc;\n");
     of.puts("}\n");
     of.puts("QData* RTLflow::get(QDataLoc qdl, size_t idx) {\n");
-    of.puts("return _qsignals + idx * qdl.size + qdl.memloc;\n");
+    of.puts("if (num_gpus == 1) { return _qsignals + idx * qdl.size + qdl.memloc; }\n");
+    of.puts("size_t d = find_device(_devices, idx);\n");
+    of.puts("auto& dev = _devices[d];\n");
+    of.puts("size_t local_idx = idx - dev.global_offset;\n");
+    of.puts("return dev._qsignals + local_idx * qdl.size + qdl.memloc;\n");
     of.puts("}\n");
     of.puts("IData* RTLflow::get(IDataLoc idl, size_t idx) {\n");
-    of.puts("return _isignals + idx * idl.size + idl.memloc;\n");
+    of.puts("if (num_gpus == 1) { return _isignals + idx * idl.size + idl.memloc; }\n");
+    of.puts("size_t d = find_device(_devices, idx);\n");
+    of.puts("auto& dev = _devices[d];\n");
+    of.puts("size_t local_idx = idx - dev.global_offset;\n");
+    of.puts("return dev._isignals + local_idx * idl.size + idl.memloc;\n");
     of.puts("}\n");
-    of.puts("RTLflow::RTLflow(size_t gpu_threads):gpu_threads{gpu_threads} {\n");
-    of.puts("checkCuda(cudaMallocManaged(&_csignals, gpu_threads * cuda_cmem_size * "
-            "sizeof(CData)));\n");
-    of.puts("checkCuda(cudaMallocManaged(&_ssignals, gpu_threads * cuda_smem_size * "
-            "sizeof(SData)));\n");
-    of.puts("checkCuda(cudaMallocManaged(&_qsignals, gpu_threads * cuda_qmem_size * "
-            "sizeof(QData)));\n");
-    of.puts("checkCuda(cudaMallocManaged(&_isignals, gpu_threads * cuda_imem_size * "
-            "sizeof(IData)));\n");
-    of.puts("checkCuda(cudaMallocManaged(&change, gpu_threads * sizeof(IData)));\n");
-    of.puts("checkCuda(cudaMallocManaged(&done, gpu_threads * sizeof(bool)));\n");
-    // of.puts("checkCuda(cudaMallocManaged(&done, gpu_threads * sizeof(IData)));\n");
-    of.puts("checkCuda(cudaMemset(change, 1, gpu_threads * sizeof(IData)));\n");
-    of.puts("checkCuda(cudaMemset(done, 0, gpu_threads * sizeof(bool)));\n");
-    // of.puts("checkCuda(cudaMemset(done, 0, gpu_threads * sizeof(IData)));\n");
+
+    // ========== Constructor: multi-GPU memory allocation ==========
+    of.puts("RTLflow::RTLflow(size_t gpu_threads, size_t num_gpus_arg)\n");
+    of.puts("    : _executor{std::max(8u, (unsigned)(num_gpus_arg ? num_gpus_arg : 1) * 2u)},\n");
+    of.puts("      gpu_threads{gpu_threads} {\n");
+    of.puts("// Auto-detect GPUs if num_gpus_arg == 0\n");
+    of.puts("if (num_gpus_arg == 0) {\n");
+    of.puts("int count = 0;\n");
+    of.puts("checkCuda(cudaGetDeviceCount(&count));\n");
+    of.puts("num_gpus = static_cast<size_t>(count);\n");
+    of.puts("} else {\n");
+    of.puts("num_gpus = num_gpus_arg;\n");
     of.puts("}\n");
+    of.puts("_devices.resize(num_gpus);\n");
+    of.puts("auto partitions = partition_stimuli(gpu_threads, num_gpus);\n");
+    of.puts("for (size_t d = 0; d < num_gpus; ++d) {\n");
+    of.puts("auto& dev = _devices[d];\n");
+    of.puts("dev.device_id = static_cast<int>(d);\n");
+    of.puts("dev.local_threads = partitions[d].first;\n");
+    of.puts("dev.global_offset = partitions[d].second;\n");
+    of.puts("tf::cudaScopedDevice ctx(dev.device_id);\n");
+    of.puts("if (num_gpus == 1) {\n");
+    of.puts("// Single GPU: use managed memory for backward-compatible get() pointer access\n");
+    of.puts("checkCuda(cudaMallocManaged(&dev._csignals, dev.local_threads * cuda_cmem_size * sizeof(CData)));\n");
+    of.puts("checkCuda(cudaMallocManaged(&dev._ssignals, dev.local_threads * cuda_smem_size * sizeof(SData)));\n");
+    of.puts("checkCuda(cudaMallocManaged(&dev._qsignals, dev.local_threads * cuda_qmem_size * sizeof(QData)));\n");
+    of.puts("checkCuda(cudaMallocManaged(&dev._isignals, dev.local_threads * cuda_imem_size * sizeof(IData)));\n");
+    of.puts("checkCuda(cudaMallocManaged(&dev.change, dev.local_threads * sizeof(IData)));\n");
+    of.puts("checkCuda(cudaMallocManaged(&dev.done, dev.local_threads * sizeof(bool)));\n");
+    of.puts("} else {\n");
+    of.puts("// Multi-GPU: use device-local memory for each GPU\n");
+    of.puts("checkCuda(cudaMalloc(&dev._csignals, dev.local_threads * cuda_cmem_size * sizeof(CData)));\n");
+    of.puts("checkCuda(cudaMalloc(&dev._ssignals, dev.local_threads * cuda_smem_size * sizeof(SData)));\n");
+    of.puts("checkCuda(cudaMalloc(&dev._qsignals, dev.local_threads * cuda_qmem_size * sizeof(QData)));\n");
+    of.puts("checkCuda(cudaMalloc(&dev._isignals, dev.local_threads * cuda_imem_size * sizeof(IData)));\n");
+    of.puts("checkCuda(cudaMalloc(&dev.change, dev.local_threads * sizeof(IData)));\n");
+    of.puts("checkCuda(cudaMalloc(&dev.done, dev.local_threads * sizeof(bool)));\n");
+    of.puts("}\n");
+    of.puts("checkCuda(cudaMemset(dev.change, 1, dev.local_threads * sizeof(IData)));\n");
+    of.puts("checkCuda(cudaMemset(dev.done, 0, dev.local_threads * sizeof(bool)));\n");
+    of.puts("}\n");
+    of.puts("// Backward-compatible aliases (point to device 0)\n");
+    of.puts("_csignals = _devices[0]._csignals;\n");
+    of.puts("_ssignals = _devices[0]._ssignals;\n");
+    of.puts("_isignals = _devices[0]._isignals;\n");
+    of.puts("_qsignals = _devices[0]._qsignals;\n");
+    of.puts("change = _devices[0].change;\n");
+    of.puts("done = _devices[0].done;\n");
+    of.puts("}\n");
+
+    // ========== Destructor: per-device cleanup ==========
     of.puts("RTLflow::~RTLflow() {\n");
-    of.puts("checkCuda(cudaFree(_csignals));\n");
-    of.puts("checkCuda(cudaFree(_ssignals));\n");
-    of.puts("checkCuda(cudaFree(_qsignals));\n");
-    of.puts("checkCuda(cudaFree(_isignals));\n");
-    of.puts("checkCuda(cudaFree(change));\n");
-    of.puts("checkCuda(cudaFree(done));\n");
-    // of.puts("checkCuda(cudaFree(done));\n");
+    of.puts("for (size_t d = 0; d < num_gpus; ++d) {\n");
+    of.puts("tf::cudaScopedDevice ctx(_devices[d].device_id);\n");
+    of.puts("checkCuda(cudaFree(_devices[d]._csignals));\n");
+    of.puts("checkCuda(cudaFree(_devices[d]._ssignals));\n");
+    of.puts("checkCuda(cudaFree(_devices[d]._qsignals));\n");
+    of.puts("checkCuda(cudaFree(_devices[d]._isignals));\n");
+    of.puts("checkCuda(cudaFree(_devices[d].change));\n");
+    of.puts("checkCuda(cudaFree(_devices[d].done));\n");
+    of.puts("}\n");
     of.puts("}\n");
     of.puts("void RTLflow::run() { _executor.run(_taskflow).wait(); }\n");
 
+    // ========== initialize(): build per-device CUDA graphs ==========
     of.puts("void RTLflow::initialize(" + topClassName + "__Syms* VlSymsp) {\n");
-    // of.puts(topClassName + "__Syms* __restrict vlSymsp = _mdoule->__VlSymsp;\n");
 
     AstExecGraph* execGraphp = v3Global.rootp()->execGraphp();
     UASSERT_OBJ(execGraphp, v3Global.rootp(), "Root should have an execGraphp");
     const V3Graph* depGraphp = execGraphp->depGraphp();
 
-    // V3Graph does not have size() function
-    // I need to caculate graph size myself
-    of.puts("size_t num_threads = (gpu_threads < 128) ? gpu_threads : 128;\n");
-    of.puts("size_t num_blocks = (num_threads < 128) ? 1 : gpu_threads / num_threads;\n");
+    // Build per-device cudaFlow graphs using emplace_on
+    of.puts("// Build per-device CUDA task graphs\n");
+    of.puts("for (size_t _d = 0; _d < num_gpus; ++_d) {\n");
+    of.puts("auto& _dev = _devices[_d];\n");
+    of.puts("size_t _lt = _dev.local_threads;\n");
+    of.puts("_taskflow.emplace_on([=, &_dev](tf::cudaFlow& _cudaflow) {\n");
+    of.puts("size_t num_threads = (_lt < 128) ? _lt : 128;\n");
+    of.puts("size_t num_blocks = (num_threads < 128) ? 1 : _lt / num_threads;\n");
+
+    // Change detection, last assign, reduce
     of.puts(
         "auto change_cut = _cudaflow.kernel(dim3(num_blocks, 1, 1), dim3(num_threads, 1, 1), 0, "
-        "_change_request, VlSymsp, _csignals, _ssignals, _isignals, _qsignals, change);\n");
+        "_change_request, VlSymsp, _dev._csignals, _dev._ssignals, _dev._isignals, _dev._qsignals, _dev.change);\n");
     of.puts(
         "auto last_assign_cut = _cudaflow.kernel(dim3(num_blocks, 1, 1), dim3(num_threads, 1, 1), "
-        "0, _last_assign, _csignals, _ssignals, _isignals, _qsignals);\n");
-    of.puts("auto reduce_cut = _cudaflow.reduce(change, change + gpu_threads, change, [] "
+        "0, _last_assign, _dev._csignals, _dev._ssignals, _dev._isignals, _dev._qsignals);\n");
+    of.puts("auto reduce_cut = _cudaflow.reduce(_dev.change, _dev.change + _lt, _dev.change, [] "
             "__device__ (IData a, IData b){ return a | b; });\n");
-    of.puts("last_assign_cut.precede(change_cut);\n\n");
-    of.puts("change_cut.precede(reduce_cut);\n\n");
+    of.puts("last_assign_cut.precede(change_cut);\n");
+    of.puts("change_cut.precede(reduce_cut);\n");
 
-    // create tasks
+    // Create per-MTask kernel tasks (same graph structure, different device signal arrays)
     for (const V3GraphVertex* vxp = depGraphp->verticesBeginp(); vxp; vxp = vxp->verticesNextp()) {
         const ExecMTask* mtp = dynamic_cast<const ExecMTask*>(vxp);
         of.puts("auto id_" + cvtToStr(mtp->id())
                 + "_cut = _cudaflow.kernel(dim3(num_blocks, 1, 1), dim3(num_threads, 1, 1), 0, "
                 + "__Vmtask__"
                 + cvtToStr(mtp->id())
-                //+ ", VlSymsp, _csignals, _ssignals, _isignals, _qsignals, change, done);\n");
-                + ", VlSymsp, _csignals, _ssignals, _isignals, _qsignals, change, done).name(\"task_"+ cvtToStr(mtp->id())+"\");\n");
+                + ", VlSymsp, _dev._csignals, _dev._ssignals, _dev._isignals, _dev._qsignals, _dev.change, _dev.done).name(\"task_"+ cvtToStr(mtp->id())+"\");\n");
     }
-    // puts("__Vchange = " + protect("_change_request") + "(vlSymsp);\n");
 
-    // dependencies
+    // MTask dependencies (same dependency structure)
     for (const V3GraphVertex* vxp = depGraphp->verticesBeginp(); vxp; vxp = vxp->verticesNextp()) {
         const ExecMTask* mtp = dynamic_cast<const ExecMTask*>(vxp);
         for (V3GraphEdge* edgep = mtp->outBeginp(); edgep; edgep = edgep->outNextp()) {
@@ -5417,32 +5483,33 @@ void V3EmitC::emitRTLflowImp() {
             of.puts("id_" + cvtToStr(mtp->id()) + "_cut.precede(id_" + cvtToStr(prevp->id())
                     + "_cut);\n");
         }
-
         if (mtp->outBeginp() == nullptr) {
             of.puts("id_" + cvtToStr(mtp->id()) + "_cut.precede(last_assign_cut);\n");
         }
     }
 
+    of.puts("}, _dev.device_id);  // emplace_on: run cudaFlow on this device\n");
+    of.puts("} // end per-device loop\n\n");
+
+    // ========== Taskflow control flow: init, sim, detect, end ==========
     of.puts("auto start_t = _taskflow.emplace([=](){\n");
     of.puts("if(VL_UNLIKELY(!init)) {\n");
+    of.puts("// Initialize each device's signals\n");
+    of.puts("for (size_t _d = 0; _d < num_gpus; ++_d) {\n");
+    of.puts("auto& _dev = _devices[_d];\n");
+    of.puts("tf::cudaScopedDevice ctx(_dev.device_id);\n");
     of.puts(v3Global.opt.prefix()
-            + "::_eval_initial(VlSymsp, _csignals, _ssignals, _isignals, _qsignals);\n");
-    of.puts("int device;\n");
-    of.puts("checkCuda(cudaGetDevice(&device));\n");
-    of.puts("checkCuda(cudaMemPrefetchAsync(_csignals, gpu_threads * cuda_cmem_size * "
-            "sizeof(CData), "
-            "device));\n");
-    of.puts("checkCuda(cudaMemPrefetchAsync(_ssignals, gpu_threads * cuda_smem_size * "
-            "sizeof(SData), "
-            "device));\n");
-    of.puts("checkCuda(cudaMemPrefetchAsync(_isignals, gpu_threads * cuda_imem_size * "
-            "sizeof(IData), "
-            "device));\n");
-    of.puts("checkCuda(cudaMemPrefetchAsync(_qsignals, gpu_threads * cuda_qmem_size * "
-            "sizeof(QData), "
-            "device));\n");
-    of.puts("checkCuda(cudaMemPrefetchAsync(change, gpu_threads * sizeof(IData), device));\n");
-    of.puts("checkCuda(cudaMemPrefetchAsync(done, gpu_threads * sizeof(bool), device));\n");
+            + "::_eval_initial(VlSymsp, _dev._csignals, _dev._ssignals, _dev._isignals, _dev._qsignals);\n");
+    of.puts("if (num_gpus == 1) {\n");
+    of.puts("// Prefetch to device for managed memory (single-GPU mode)\n");
+    of.puts("checkCuda(cudaMemPrefetchAsync(_dev._csignals, _dev.local_threads * cuda_cmem_size * sizeof(CData), _dev.device_id));\n");
+    of.puts("checkCuda(cudaMemPrefetchAsync(_dev._ssignals, _dev.local_threads * cuda_smem_size * sizeof(SData), _dev.device_id));\n");
+    of.puts("checkCuda(cudaMemPrefetchAsync(_dev._isignals, _dev.local_threads * cuda_imem_size * sizeof(IData), _dev.device_id));\n");
+    of.puts("checkCuda(cudaMemPrefetchAsync(_dev._qsignals, _dev.local_threads * cuda_qmem_size * sizeof(QData), _dev.device_id));\n");
+    of.puts("checkCuda(cudaMemPrefetchAsync(_dev.change, _dev.local_threads * sizeof(IData), _dev.device_id));\n");
+    of.puts("checkCuda(cudaMemPrefetchAsync(_dev.done, _dev.local_threads * sizeof(bool), _dev.device_id));\n");
+    of.puts("}\n");
+    of.puts("}\n");
     of.puts("init = true;\n");
     of.puts("return 0;\n");
     of.puts("}\n");
@@ -5453,41 +5520,58 @@ void V3EmitC::emitRTLflowImp() {
 
     of.puts("auto init_detect_t = _taskflow.emplace([=](){\n");
     of.puts("if(++loop > 100) {\n");
-    of.puts("_change_request<<<dim3(num_blocks, 1, 1), dim3(num_threads, 1, 1), 0>>>(VlSymsp, "
-            "_csignals, _ssignals, _isignals, _qsignals, change);\n");
-    of.puts("checkCuda(cudaDeviceSynchronize());\n");
     of.puts("VL_FATAL_MT(\"add.v\", 2, \"\",\n");
     of.puts("\"Verilated model didn't converge\"\n");
     of.puts("\"- See https://verilator.org/warn/DIDNOTCONVERGE\");\n");
     of.puts("}\n");
-    of.puts("return (bool)change[0];\n");
+    of.puts("// Aggregate convergence across all devices\n");
+    of.puts("bool any_change = false;\n");
+    of.puts("for (size_t _d = 0; _d < num_gpus; ++_d) {\n");
+    of.puts("IData dev_change = 0;\n");
+    of.puts("cudaMemcpy(&dev_change, _devices[_d].change, sizeof(IData), cudaMemcpyDeviceToHost);\n");
+    of.puts("any_change |= (bool)dev_change;\n");
+    of.puts("}\n");
+    of.puts("return any_change;\n");
     of.puts("});\n");
 
     of.puts("auto init_sim_t = _taskflow.emplace([=](){\n");
+    of.puts("// Initial settle on each device\n");
+    of.puts("for (size_t _d = 0; _d < num_gpus; ++_d) {\n");
+    of.puts("auto& _dev = _devices[_d];\n");
+    of.puts("tf::cudaScopedDevice ctx(_dev.device_id);\n");
+    of.puts("size_t _nt = (_dev.local_threads < 128) ? _dev.local_threads : 128;\n");
+    of.puts("size_t _nb = (_nt < 128) ? 1 : _dev.local_threads / _nt;\n");
     of.puts(
-        "_eval_settle<<<dim3(num_blocks, 1, 1), dim3(num_threads, 1, 1), 0>>>(VlSymsp, _csignals, "
-        "_ssignals, _isignals, _qsignals);\n");
+        "_eval_settle<<<dim3(_nb, 1, 1), dim3(_nt, 1, 1), 0>>>(VlSymsp, _dev._csignals, "
+        "_dev._ssignals, _dev._isignals, _dev._qsignals);\n");
     of.puts("checkCuda(cudaDeviceSynchronize());\n");
-    of.puts("_cudaflow.offload();\n");
+    of.puts("}\n");
     of.puts("});\n");
 
     of.puts("auto sim_t = _taskflow.emplace([=](){\n");
-    of.puts("_cudaflow.offload();\n");
+    of.puts("// cudaFlow graphs are offloaded automatically via emplace_on\n");
     of.puts("});\n");
     of.puts("auto end_t = _taskflow.emplace([=](){\n");
     of.puts("loop = 0;\n");
-    of.puts("checkCuda(cudaMemset(change, 1, sizeof(IData) * gpu_threads));\n");
+    of.puts("for (size_t _d = 0; _d < num_gpus; ++_d) {\n");
+    of.puts("tf::cudaScopedDevice ctx(_devices[_d].device_id);\n");
+    of.puts("checkCuda(cudaMemset(_devices[_d].change, 1, sizeof(IData) * _devices[_d].local_threads));\n");
+    of.puts("}\n");
     of.puts("});\n\n");
     of.puts("auto detect_t = _taskflow.emplace([=](){\n");
     of.puts("if(++loop > 100) {\n");
-    of.puts("_change_request<<<dim3(num_blocks, 1, 1), dim3(num_threads, 1, 1), 0>>>(VlSymsp, "
-            "_csignals, _ssignals, _isignals, _qsignals, change);\n");
-    of.puts("checkCuda(cudaDeviceSynchronize());\n");
     of.puts("VL_FATAL_MT(\"add.v\", 2, \"\",\n");
     of.puts("\"Verilated model didn't converge\"\n");
     of.puts("\"- See https://verilator.org/warn/DIDNOTCONVERGE\");\n");
     of.puts("}\n");
-    of.puts("return (bool)change[0];\n");
+    of.puts("// Aggregate convergence across all devices\n");
+    of.puts("bool any_change = false;\n");
+    of.puts("for (size_t _d = 0; _d < num_gpus; ++_d) {\n");
+    of.puts("IData dev_change = 0;\n");
+    of.puts("cudaMemcpy(&dev_change, _devices[_d].change, sizeof(IData), cudaMemcpyDeviceToHost);\n");
+    of.puts("any_change |= (bool)dev_change;\n");
+    of.puts("}\n");
+    of.puts("return any_change;\n");
     of.puts("});\n");
     of.puts("start_t.precede(init_sim_t, sim_t);\n");
     of.puts("init_sim_t.precede(init_detect_t);\n");

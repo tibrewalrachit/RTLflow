@@ -11,12 +11,28 @@
 
 PERL = @PERL@
 PYTHON3 = @PYTHON3@
-NVCC = nvcc 
-LINK = $(NVCC) -arch=sm_80 -lpthread  -lgomp
+NVCC = nvcc
+CUDA_ARCH = @CUDA_ARCH@
+ENABLE_MPI = @ENABLE_MPI@
+comma := ,
 
-RTLFLOW_FLAGS = -std=c++17 -arch=sm_80 --extended-lambda -I $(VERILATOR_ROOT)/include/taskflow -Xcompiler -fopenmp
+# Generate -gencode flags from CUDA_ARCH (supports comma-separated list)
+# e.g. sm_80,sm_90 -> -gencode arch=compute_80,code=sm_80 -gencode arch=compute_90,code=sm_90
+CUDA_GENCODE_FLAGS = $(foreach arch,$(subst $(comma), ,$(CUDA_ARCH)), \
+  -gencode arch=compute_$(subst sm_,,$(arch)),code=$(arch))
 
-# for convience
+LINK = $(NVCC) $(CUDA_GENCODE_FLAGS) -lpthread -lgomp
+
+RTLFLOW_FLAGS = -std=c++17 $(CUDA_GENCODE_FLAGS) --extended-lambda \
+  -I $(VERILATOR_ROOT)/include/taskflow -Xcompiler -fopenmp
+
+# MPI support (conditional)
+ifeq ($(ENABLE_MPI),yes)
+  RTLFLOW_FLAGS += $(shell mpicxx --showme:compile) -DRTLFLOW_MPI
+  LINK += $(shell mpicxx --showme:link)
+endif
+
+# for convenience
 CXX = $(NVCC)
 AR = ar
 RANLIB = ranlib

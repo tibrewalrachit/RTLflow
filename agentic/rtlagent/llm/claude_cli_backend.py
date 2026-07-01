@@ -45,7 +45,9 @@ class ClaudeCLIBackend(LLMBackend):
             cmd, input=prompt, capture_output=True, text=True, timeout=self.timeout
         )
         if proc.returncode != 0:
-            raise RuntimeError(f"claude CLI failed (rc={proc.returncode}): {proc.stderr[-500:]}")
+            # Error details often arrive as JSON on stdout, not stderr.
+            detail = (proc.stderr.strip() or proc.stdout.strip())[-500:]
+            raise RuntimeError(f"claude CLI failed (rc={proc.returncode}): {detail}")
         try:
             data = json.loads(proc.stdout)
             text = data.get("result", "")

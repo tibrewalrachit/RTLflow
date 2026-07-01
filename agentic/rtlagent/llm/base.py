@@ -68,7 +68,7 @@ class LLMBackend(ABC):
         system: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        retries: int = 7,
+        retries: int = 12,
     ) -> LLMResponse:
         if isinstance(messages, str):
             messages = [Message("user", messages)]
@@ -88,8 +88,9 @@ class LLMBackend(ABC):
                 log.warning("%s chat failed (%s); retry %d/%d in %.0fs",
                             self.name, e, attempt + 1, retries, delay)
                 time.sleep(delay)
-                # Cap high enough to ride out multi-minute rate-limit windows.
-                delay = min(delay * 2, 60)
+                # Cap high enough to ride out multi-minute rate-limit windows
+                # (observed outages of ~10 minutes on shared-session CLIs).
+                delay = min(delay * 2, 90)
         raise RuntimeError(f"LLM backend '{self.name}' failed after {retries + 1} attempts: {last_err}")
 
 

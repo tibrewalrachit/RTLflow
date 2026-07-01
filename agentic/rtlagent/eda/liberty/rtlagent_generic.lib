@@ -1,0 +1,92 @@
+/* rtlagent_generic.lib
+ *
+ * Minimal generic standard-cell library used by the rtlagent open-source
+ * synthesis flow (yosys + ABC).  Areas are in arbitrary units roughly
+ * proportional to transistor count.  Timing is intentionally omitted from
+ * the liberty view: ABC maps for gate count, and the rtlagent Python STA
+ * engine (rtlagent.eda.sta) applies the per-cell delay model defined in
+ * CELL_DELAYS, keeping the delay model in one place.
+ */
+library(rtlagent_generic) {
+  cell(INV) {
+    area: 2;
+    pin(A) { direction: input; }
+    pin(Y) { direction: output; function: "A'"; }
+  }
+  cell(BUF) {
+    area: 3;
+    pin(A) { direction: input; }
+    pin(Y) { direction: output; function: "A"; }
+  }
+  cell(NAND2) {
+    area: 4;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(Y) { direction: output; function: "(A*B)'"; }
+  }
+  cell(NOR2) {
+    area: 4;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(Y) { direction: output; function: "(A+B)'"; }
+  }
+  cell(AND2) {
+    area: 6;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(Y) { direction: output; function: "(A*B)"; }
+  }
+  cell(OR2) {
+    area: 6;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(Y) { direction: output; function: "(A+B)"; }
+  }
+  cell(NAND3) {
+    area: 6;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(C) { direction: input; }
+    pin(Y) { direction: output; function: "(A*B*C)'"; }
+  }
+  cell(NOR3) {
+    area: 6;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(C) { direction: input; }
+    pin(Y) { direction: output; function: "(A+B+C)'"; }
+  }
+  cell(XOR2) {
+    area: 8;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(Y) { direction: output; function: "(A*B') + (A'*B)"; }
+  }
+  cell(XNOR2) {
+    area: 8;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(Y) { direction: output; function: "(A*B) + (A'*B')"; }
+  }
+  cell(AOI21) {
+    area: 6;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(C) { direction: input; }
+    pin(Y) { direction: output; function: "((A*B)+C)'"; }
+  }
+  cell(OAI21) {
+    area: 6;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(C) { direction: input; }
+    pin(Y) { direction: output; function: "((A+B)*C)'"; }
+  }
+  cell(MUX2) {
+    area: 8;
+    pin(A) { direction: input; }
+    pin(B) { direction: input; }
+    pin(S) { direction: input; }
+    pin(Y) { direction: output; function: "(S'*A) + (S*B)"; }
+  }
+}

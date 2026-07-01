@@ -1,0 +1,8 @@
+{
+  "name": "crc8",
+  "top": "crc8",
+  "files": ["design.v"],
+  "testbench": "tb.v",
+  "clock_period": 0.9,
+  "description": "Byte-per-cycle CRC-8 implemented as eight chained single-bit steps; the feedback chain is 8 mux/xor stages deep."
+}

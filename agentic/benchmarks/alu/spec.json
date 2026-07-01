@@ -1,0 +1,8 @@
+{
+  "name": "alu",
+  "top": "alu",
+  "files": ["design.v"],
+  "testbench": "tb.v",
+  "clock_period": 1.2,
+  "description": "16-bit ALU with serial priority-mux result selection, signed compare in series with the adder, and barrel shifts."
+}

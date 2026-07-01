@@ -61,6 +61,10 @@ def create_backend(spec: str, temperature: float = 0.3, max_tokens: int = 8192) 
             base_url=base_url or "https://openrouter.ai/api/v1",
             api_key_env="OPENROUTER_API_KEY",
         )
+    if provider == "claude-cli":
+        from .claude_cli_backend import ClaudeCLIBackend
+
+        return ClaudeCLIBackend(model, temperature, max_tokens)
     if provider == "mock":
         from .mock_backend import MockBackend
 
@@ -78,4 +82,8 @@ def default_backend_spec() -> str:
         return "glm:glm-5.2"
     if os.environ.get("OPENAI_API_KEY"):
         return "openai:gpt-5"
+    import shutil
+
+    if shutil.which("claude"):
+        return "claude-cli:"
     return "mock:"

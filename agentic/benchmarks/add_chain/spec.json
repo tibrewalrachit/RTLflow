@@ -1,0 +1,8 @@
+{
+  "name": "add_chain",
+  "top": "add_chain",
+  "files": ["design.v"],
+  "testbench": "tb.v",
+  "clock_period": 1.6,
+  "description": "8-operand accumulator implemented as a serial adder chain; the critical path runs through eight cascaded 20-bit adders plus the accumulator add."
+}

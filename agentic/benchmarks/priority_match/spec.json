@@ -1,0 +1,8 @@
+{
+  "name": "priority_match",
+  "top": "priority_match",
+  "files": ["design.v"],
+  "testbench": "tb.v",
+  "clock_period": 0.7,
+  "description": "8-entry masked pattern matcher; winner picked by a serial nested-ternary priority cascade over 32-bit compares."
+}

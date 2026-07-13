@@ -1,0 +1,5 @@
+# LLM backends (install the ones you use)
+anthropic>=0.40
+openai>=1.50
+# learned PPA proxy (optional; analytical fallback works without it)
+scikit-learn>=1.3
